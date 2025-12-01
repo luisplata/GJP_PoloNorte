@@ -38,7 +38,7 @@ namespace Adapters
                 }
 
                 cameraTransform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
-                Debug.Log($"SetRotation called: yaw={yaw} pitch={pitch} -> player.eulerAngles={transform.eulerAngles} camera.localEulerAngles={cameraTransform.localEulerAngles}");
+                // Debug.Log($"SetRotation called: yaw={yaw} pitch={pitch} -> player.eulerAngles={transform.eulerAngles} camera.localEulerAngles={cameraTransform.localEulerAngles}");
             }
         }
 

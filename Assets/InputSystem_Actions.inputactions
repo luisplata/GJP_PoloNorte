@@ -30,7 +30,16 @@
                     "id": "c2bad4e4-9858-4b12-b68f-c9dbd606e409",
                     "expectedControlType": "",
                     "processors": "",
-                    "interactions": "",
+                    "interactions": "Press(pressPoint=0.1,behavior=2)",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Pistol",
+                    "type": "Button",
+                    "id": "9f416691-71cf-42e1-aa97-bb53f69fed22",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "Press(pressPoint=0.1,behavior=2)",
                     "initialStateCheck": false
                 }
             ],
@@ -208,6 +217,17 @@
                     "processors": "",
                     "groups": ";Keyboard&Mouse",
                     "action": "ThrowHand",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "d59aed24-4cf6-4c97-b266-f5588a7a4afd",
+                    "path": "<Mouse>/leftButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Pistol",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

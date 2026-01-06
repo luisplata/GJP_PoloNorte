@@ -8,18 +8,18 @@ namespace Player.Hand
     /// <summary>
     /// HandMediator (simplificado): comportamiento tipo gancho/hand
     /// - Press (Input.started) -> lanza la mano desde `handOrigin` hacia su forward
-    /// - Hold -> la mano avanza en línea recta (sin gravedad)
+    /// - Hold -> la mano avanza en línea recta (sin gravedad) o en parábola si se configura
     /// - Release (Input.canceled) -> la mano vuelve al origen
     /// Opcional: usa Rigidbody para movimiento (constante) o mueve Transform directamente.
     /// </summary>
     public class HandMediator : MonoBehaviour
     {
-        public GameObject hand; // el objeto que representa la mano
+        public Hand hand; // el objeto que representa la mano
         public Transform handOrigin; // punto de origen (p. ej. punta del arma)
         public RopeWithWave ropeStraight; // opcional: visual de cuerda
 
         [Header("Movement")] public bool useRigidbody = true; // si true usa Rigidbody; si false mueve Transform
-        public float throwSpeed = 20f; // velocidad mientras avanza
+        public float throwSpeed = 20f; // velocidad por defecto mientras avanza (si no se usa LaunchParams)
         public float returnSpeed = 25f; // velocidad de regreso
         public float maxDistance = 30f; // distancia máxima desde el origen
         public LayerMask hitLayers = ~0; // capas que bloquean el avance
@@ -38,6 +38,23 @@ namespace Player.Hand
         [Tooltip(
             "Multiplicador aplicado a la velocidad de lanzamiento para calcular el 'amount' pasado a IIceberg.Rise(amount)")]
         public float riseMultiplier = 0.5f;
+
+        // Nuevo: parámetros de lanzamiento configurables (útil para powerups)
+        [System.Serializable]
+        public struct LaunchParams
+        {
+            public float speed;        // magnitud inicial
+            public float angleDeg;     // ángulo de elevación (grados)
+            public bool useArc;        // si true hace lanzamiento parabólico, si false hace dirección plana
+            public bool useGravity;    // si true habilita gravedad en Rigidbody o simulación
+            public float gravityScale; // escala de gravedad para simulación
+        }
+
+        [Header("Launch Params")]
+        public LaunchParams defaultLaunch = new LaunchParams { speed = 20f, angleDeg = 10f, useArc = false, useGravity = false, gravityScale = 1f };
+
+        // estado actual de parámetros (pueden ser cambiados por powerups)
+        private LaunchParams _launchParams;
 
         // Interno
         enum State
@@ -58,9 +75,12 @@ namespace Player.Hand
 
         Vector3 _originWorldPos;
 
-        Vector3 _launchDir;
-        Vector3 _launchDirXZ;
+        Vector3 _launchDir;   // dirección unit (world) hacia adelante (puede ser no horizontal si useArc)
+        Vector3 _launchDirXZ; // dirección horizontal proyectada (XZ)
         float _verticalVelocity;
+
+        // Para simulación ballistic en modo transform
+        Vector3 _ballisticVelocity;
 
         void Awake()
         {
@@ -69,43 +89,22 @@ namespace Player.Hand
             {
                 _originWorldPos = handOrigin.position;
             }
+
+            // inicializar parámetros de lanzamiento
+            _launchParams = defaultLaunch;
+
+            hand.Configure(this);
         }
 
         void Update()
         {
-            // Estado Thrown: si no usamos rigidbody, mover por transform aquí
+            // Simple movement when throwing using transform (no collision checks here)
             if (_state == State.Thrown && !useRigidbody)
             {
                 float dt = Time.deltaTime;
-                Vector3 currentPos = hand.transform.position;
-                Vector3 delta;
-                if (applyGravityOnThrow)
-                {
-                    // separamos movimiento horizontal y vertical
-                    Vector3 horiz = _launchDirXZ * (throwSpeed * dt);
-                    _verticalVelocity += Physics.gravity.y * gravityScale * dt;
-                    Vector3 vert = Vector3.up * (_verticalVelocity * dt);
-                    delta = horiz + vert;
-                }
-                else
-                {
-                    delta = _launchDir * (throwSpeed * dt);
-                }
-
-                Vector3 nextPos = currentPos + delta;
-
-                // check collision between currentPos and nextPos
-                float stepDist = delta.magnitude;
-                Vector3 checkDir = (delta.sqrMagnitude > 1e-6f) ? delta.normalized : _launchDir;
-                if (Physics.Raycast(currentPos, checkDir, out RaycastHit hit, stepDist, hitLayers))
-                {
-                    // impact
-                    hand.transform.position = hit.point;
-                    StartReturn();
-                    return;
-                }
-
-                hand.transform.position = nextPos;
+                // movimiento simple en la dirección de lanzamiento
+                Vector3 delta = _launchDir * (_launchParams.speed * dt);
+                hand.transform.position += delta;
 
                 // check max distance
                 if (Vector3.Distance(hand.transform.position, _originWorldPos) >= maxDistance)
@@ -118,7 +117,7 @@ namespace Player.Hand
             if (_state == State.Returning)
             {
                 float dt = Time.deltaTime;
-                Vector3 target = handOrigin.transform.position;
+                Vector3 target = handOrigin != null ? handOrigin.position : this.transform.position;
                 // mueve con rapidez de returnSpeed
                 Vector3 newPos = Vector3.MoveTowards(hand.transform.position, target, returnSpeed * dt);
                 hand.transform.position = newPos;
@@ -133,49 +132,14 @@ namespace Player.Hand
 
         void FixedUpdate()
         {
+            // Rigidbody driven movement: we rely on physics for collisions. Only ensure velocity is set on launch and check max distance.
             if (_state == State.Thrown && useRigidbody && _rb != null)
             {
-                // aplicar velocidad inicial y controlar si la gravedad debe aplicarse
-                _rb.useGravity = applyGravityOnThrow;
-                // si usamos gravedad dejamos que Unity la modifique, pero inicializamos la velocidad
-                try
-                {
-                    _rb.linearVelocity = _launchDir * throwSpeed;
-                }
-                catch (System.Exception ex)
-                {
-                    Debug.LogWarning($"HandMediator: fallo al asignar linearVelocity en FixedUpdate: {ex.Message}");
-                }
+                // ensure gravity flag matches params
+                _rb.useGravity = _launchParams.useGravity;
 
-                // comprobar distancia
+                // check max distance
                 if (Vector3.Distance(_rb.position, _originWorldPos) >= maxDistance)
-                {
-                    StartReturn();
-                }
-
-                // chequeo simple de colisión por delante
-                float linMag = 0f;
-                try
-                {
-                    linMag = _rb.linearVelocity.magnitude;
-                }
-                catch
-                {
-                    linMag = 0f;
-                }
-
-                float checkDist = (linMag * Time.fixedDeltaTime) + 0.05f;
-                Vector3 rbCheckDir;
-                try
-                {
-                    rbCheckDir = (_rb.linearVelocity.sqrMagnitude > 1e-6f) ? _rb.linearVelocity.normalized : _launchDir;
-                }
-                catch
-                {
-                    rbCheckDir = _launchDir;
-                }
-
-                if (Physics.Raycast(_rb.position, rbCheckDir, out RaycastHit hit, checkDist, hitLayers))
                 {
                     StartReturn();
                 }
@@ -210,6 +174,8 @@ namespace Player.Hand
                 return;
             }
 
+            hand.StartCollect();
+
             // guardar estado original
             _originalParent = hand.transform.parent;
             _originalLocalPos = hand.transform.localPosition;
@@ -228,6 +194,32 @@ namespace Player.Hand
             hand.transform.position = launchPos;
             hand.transform.SetParent(null, true);
 
+            // aplicar parámetros de lanzamiento actuales (_launchParams) al inicio
+            // calcular velocidad inicial
+            // calcular ángulo a usar: por defecto desde _launchParams.angleDeg
+            float angleToUseDeg = _launchParams.angleDeg;
+            if (_launchParams.useArc)
+            {
+                float angRad = angleToUseDeg * Mathf.Deg2Rad;
+                Vector3 forwardXZ = _launchDirXZ;
+                // componente horizontal
+                Vector3 hor = forwardXZ * (_launchParams.speed * Mathf.Cos(angRad));
+                // componente vertical
+                Vector3 ver = Vector3.up * (_launchParams.speed * Mathf.Sin(angRad));
+                _ballisticVelocity = hor + ver;
+                _verticalVelocity = _ballisticVelocity.y;
+            }
+            else
+            {
+                // comportamiento plano: velocidad en la dirección full _launchDir
+                _ballisticVelocity = _launchDir * _launchParams.speed;
+                _verticalVelocity = _launchDir.y * _launchParams.speed;
+            }
+
+            // ajustar flags de gravedad según parámetros
+            applyGravityOnThrow = _launchParams.useGravity;
+            gravityScale = _launchParams.gravityScale;
+
             // activar cuerda/visual
             if (ropeStraight != null) ropeStraight.isActive = true;
 
@@ -236,116 +228,144 @@ namespace Player.Hand
                 _rb = hand.GetComponent<Rigidbody>();
                 if (_rb == null)
                 {
-                    _rb = hand.AddComponent<Rigidbody>();
+                    _rb = hand.gameObject.AddComponent<Rigidbody>();
                     _addedRigidbody = true;
                 }
 
                 _rb.isKinematic = false;
-                _rb.useGravity = applyGravityOnThrow;
+                _rb.useGravity = _launchParams.useGravity;
                 _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
                 _rb.interpolation = RigidbodyInterpolation.Interpolate;
 
                 // aplicar velocidad inicial
-                _rb.linearVelocity = _launchDir * throwSpeed;
-                // inicializamos verticalVelocity para modo transform si fuera necesario
-                _verticalVelocity = _launchDir.y * throwSpeed;
+                // aplicar un impulso directo para establecer la velocidad (simple)
+                try
+                {
+                    _rb.AddForce(_ballisticVelocity, ForceMode.VelocityChange);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"HandMediator: fallo al aplicar impulso en Launch(): {ex.Message}");
+                }
+            }
+            else
+            {
+                // en modo transform, inicializamos la velocidad ballistic que se integrará en Update
+                // _ballisticVelocity ya está inicializada arriba
             }
 
             _state = State.Thrown;
         }
 
-        void StartReturn()
+        /// <summary>
+        /// Permite que powerups u otros sistemas modifiquen parámetros de lanzamiento.
+        /// </summary>
+        public void SetLaunchParams(LaunchParams p)
         {
-            if (_state == State.Returning) return;
-
-            _state = State.Returning;
-
-            // Reparentar inmediatamente al padre original (manteniendo posición world) para que no quede suelta
-            if (hand != null)
-            {
-                if (_originalParent != null)
-                    hand.transform.SetParent(_originalParent, true);
-                else
-                    hand.transform.SetParent(this.transform, true);
-            }
-
-            // si usamos rigidbody, desactivamos su control para mover manualmente
-            if (_rb != null)
-            {
-                // Evitar escribir linearVelocity si ya es kinematic
-                if (!_rb.isKinematic)
-                {
-                    try
-                    {
-                        _rb.linearVelocity = Vector3.zero;
-                    }
-                    catch
-                    {
-                    }
-                }
-
-                _rb.isKinematic = true; // pasamos a mover por transform
-            }
-
-            // desactivar cuerda si querés, o mantener
-            if (ropeStraight != null) ropeStraight.isActive = true; // o false si prefieres ocultar
+            _launchParams = p;
         }
 
-        void ReturnComplete()
+        /// <summary>
+        /// Restablece los parámetros de lanzamiento al valor por defecto.
+        /// </summary>
+        public void ResetLaunchParams()
         {
-            // restaurar parent y transform
-            if (hand == null) return;
-
-            // Primero reparentamos para que la mano vuelva a ser controlada por su padre de inmediato
-            if (_originalParent != null)
-            {
-                hand.transform.SetParent(_originalParent, false);
-            }
-            else
-            {
-                // si no había padre original, la hacemos hija del HandMediator para no dejarla suelta
-                hand.transform.SetParent(this.transform, false);
-            }
-
-            // Restaurar transform local una vez que está parentada
-            hand.transform.localPosition = _originalLocalPos;
-            hand.transform.localRotation = _originalLocalRot;
-
-            // quitar o dejar el rigidbody en estado seguro
-            if (_rb != null)
-            {
-                if (_addedRigidbody)
-                {
-                    Destroy(_rb);
-                }
-                else
-                {
-                    // Si no es kinematic, detener la velocidad; luego desactivar gravedad y activar kinematic
-                    if (!_rb.isKinematic)
-                    {
-                        try
-                        {
-                            _rb.linearVelocity = Vector3.zero;
-                        }
-                        catch
-                        {
-                        }
-                    }
-
-                    _rb.useGravity = false;
-                    _rb.isKinematic = true;
-                }
-
-                _rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
-                _rb.interpolation = RigidbodyInterpolation.None;
-
-                _rb = null;
-                _addedRigidbody = false;
-            }
-
-            if (ropeStraight != null) ropeStraight.isActive = false;
-
-            _state = State.Idle;
+            _launchParams = defaultLaunch;
         }
-    }
-}
+
+         public void StartReturn()
+         {
+             if (_state == State.Returning) return;
+
+             _state = State.Returning;
+
+             // Reparentar inmediatamente al padre original (manteniendo posición world) para que no quede suelta
+             if (hand != null)
+             {
+                 if (_originalParent != null)
+                     hand.transform.SetParent(_originalParent, true);
+                 else
+                     hand.transform.SetParent(this.transform, true);
+             }
+
+             // si usamos rigidbody, desactivamos su control para mover manualmente
+             if (_rb != null)
+             {
+                 // Evitar escribir linearVelocity si ya es kinematic
+                 if (!_rb.isKinematic)
+                 {
+                     try
+                     {
+                         _rb.linearVelocity = Vector3.zero;
+                     }
+                     catch
+                     {
+                     }
+                 }
+
+                 _rb.isKinematic = true; // pasamos a mover por transform
+             }
+
+             // desactivar cuerda si querés, o mantener
+             if (ropeStraight != null) ropeStraight.isActive = true; // o false si prefieres ocultar
+         }
+
+         void ReturnComplete()
+         {
+             // restaurar parent y transform
+             if (hand == null) return;
+
+             // Primero reparentamos para que la mano vuelva a ser controlada por su padre de inmediato
+             if (_originalParent != null)
+             {
+                 hand.transform.SetParent(_originalParent, false);
+             }
+             else
+             {
+                 // si no había padre original, la hacemos hija del HandMediator para no dejarla suelta
+                 hand.transform.SetParent(this.transform, false);
+             }
+
+             // Restaurar transform local una vez que está parentada
+             hand.transform.localPosition = _originalLocalPos;
+             hand.transform.localRotation = _originalLocalRot;
+
+             // quitar o dejar el rigidbody en estado seguro
+             if (_rb != null)
+             {
+                 if (_addedRigidbody)
+                 {
+                     Destroy(_rb);
+                 }
+                 else
+                 {
+                     // Si no es kinematic, detener la velocidad; luego desactivar gravedad y activar kinematic
+                     if (!_rb.isKinematic)
+                     {
+                         try
+                         {
+                             _rb.linearVelocity = Vector3.zero;
+                         }
+                         catch
+                         {
+                         }
+                     }
+
+                     _rb.useGravity = false;
+                     _rb.isKinematic = true;
+                 }
+
+                 _rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
+                 _rb.interpolation = RigidbodyInterpolation.None;
+
+                 _rb = null;
+                 _addedRigidbody = false;
+             }
+
+             if (ropeStraight != null) ropeStraight.isActive = false;
+
+             _state = State.Idle;
+         }
+     }
+ }
+

@@ -13,11 +13,13 @@ MonoBehaviour:
   m_Name: Stage 3
   m_EditorClassIdentifier: 
   stageName: Stage 3
-  duration: 60
+  duration: 10
   icebergCount: 4
   icebergBehavior: 2
+  icebergToLose: 0
   hasSun: 1
   sunHeat: 1
+  numberOfSunFlares: 0
   hasTide: 0
   tideAmplitude: 0
   tideFrequency: 0

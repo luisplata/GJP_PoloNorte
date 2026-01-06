@@ -9,8 +9,6 @@ namespace GJP_PoloNorte.Domain.UseCases
         readonly IInputPort _input;
         readonly ICharacterControllerPort _actor;
 
-        readonly float _walkSpeed;
-        readonly float _sprintMultiplier;
         readonly float _mouseSensitivity;
         readonly float _jumpSpeed;
         readonly float _gravity;
@@ -18,25 +16,22 @@ namespace GJP_PoloNorte.Domain.UseCases
         float _verticalVelocity;
         float _pitch;
         float _yaw;
-        
-        private PlayerState _playerState = new();
 
-        public PlayerMovementUseCase(IInputPort input, ICharacterControllerPort actor,
+        private PlayerState _playerState;
+
+        public PlayerMovementUseCase(PlayerState playerState, IInputPort input, ICharacterControllerPort actor,
             float walkSpeed = 5f, float sprintMultiplier = 1.8f, float mouseSensitivity = 2f,
             float jumpSpeed = 5f, float gravity = 9.81f)
         {
             _input = input;
             _actor = actor;
-            _walkSpeed = walkSpeed;
-            _sprintMultiplier = sprintMultiplier;
             _mouseSensitivity = mouseSensitivity;
             _jumpSpeed = jumpSpeed;
             _gravity = gravity;
-            
-            _playerState.IsGrounded = true;
-            _playerState.Pitch = 0f;
-            _playerState.Yaw = 0f;
-            _playerState.Velocity = Vector3.zero;
+
+            _playerState = playerState;
+            _playerState.WalkSpeed = walkSpeed;
+            _playerState.SprintMultiplier = sprintMultiplier;
 
             // Inicializar yaw al valor actual del actor para acumular correctamente
             if (_actor?.CharacterTransform != null) _yaw = _actor.CharacterTransform.eulerAngles.y;
@@ -62,10 +57,12 @@ namespace GJP_PoloNorte.Domain.UseCases
             var basis = _actor.CameraTransform != null ? _actor.CameraTransform : _actor.CharacterTransform;
             var forward = basis.forward;
             var right = basis.right;
-            forward.y = 0; right.y = 0;
-            forward.Normalize(); right.Normalize();
+            forward.y = 0;
+            right.y = 0;
+            forward.Normalize();
+            right.Normalize();
 
-            var speed = _walkSpeed * (_input.Sprint ? _sprintMultiplier : 1f);
+            var speed = _playerState.WalkSpeed * (_input.Sprint ? _playerState.SprintMultiplier : 1f);
             var horizontalVelocity = (forward * move.y + right * move.x) * speed;
 
             // Ground check

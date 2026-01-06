@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using Icebergs;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 public class IcebergRules : MonoBehaviour
 {
@@ -9,12 +11,13 @@ public class IcebergRules : MonoBehaviour
     [SerializeField] private float maxRiseHeight;
     [SerializeField] private float velocityToFall;
     [SerializeField] private int numberOfAnimalsOnIceberg;
-    [SerializeField] private List<Iceberg> icebergs;
     [SerializeField] private int icebergsToLose;
 
     private int _icebergsLost;
 
-    private void Start()
+    public Action OnLose;
+
+    public void Spawn(List<Iceberg> icebergs, StageConfig stageConfig, Action onIcebergLost)
     {
         foreach (var iceberg in icebergs)
         {
@@ -22,7 +25,10 @@ public class IcebergRules : MonoBehaviour
             int numAnimals = Random.Range(1, numberOfAnimalsOnIceberg + 1);
             iceberg.Configure(timeStepToCheck, limitDepth, maxRiseHeight, velocityToFall, numAnimals);
             iceberg.OnLoseIceberg += HandleIcebergLost;
+            iceberg.OnLoseIceberg += onIcebergLost;
         }
+
+        icebergsToLose = stageConfig.icebergToLose;
     }
 
     private void HandleIcebergLost()
@@ -32,6 +38,7 @@ public class IcebergRules : MonoBehaviour
         {
             Debug.Log("Game Over: Too many icebergs lost!");
             // Aquí puedes agregar la lógica para finalizar el juego
+            OnLose?.Invoke();
         }
     }
 }

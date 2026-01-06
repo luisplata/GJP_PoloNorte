@@ -66,7 +66,7 @@ namespace Icebergs
 
         private void FixedUpdate()
         {
-            transform.position += Vector3.down * (_velocityToFall * Time.fixedDeltaTime);
+            transform.position += Vector3.down * (_velocityToFall / 100 * Time.fixedDeltaTime);
         }
 
         public void Rise(float amount)

@@ -56,8 +56,7 @@ namespace Icebergs
             while (_validate)
             {
                 yield return new WaitForSeconds(timeStep);
-                Debug.Log(
-                    $"Iceberg '{name}': Validating position at y={transform.position.y}, limitDepth={_limitDepth}");
+                // Debug.Log($"Iceberg '{name}': Validating position at y={transform.position.y}, limitDepth={_limitDepth}");
                 if (transform.position.y < _limitDepth)
                 {
                     OnLoseIceberg?.Invoke();

@@ -1,5 +1,6 @@
 using UnityEngine;
 using GJP_PoloNorte.Domain.Ports;
+using Player.Movement.Domain;
 
 namespace GJP_PoloNorte.Domain.UseCases
 {
@@ -17,6 +18,8 @@ namespace GJP_PoloNorte.Domain.UseCases
         float _verticalVelocity;
         float _pitch;
         float _yaw;
+        
+        private PlayerState _playerState = new();
 
         public PlayerMovementUseCase(IInputPort input, ICharacterControllerPort actor,
             float walkSpeed = 5f, float sprintMultiplier = 1.8f, float mouseSensitivity = 2f,
@@ -29,6 +32,11 @@ namespace GJP_PoloNorte.Domain.UseCases
             _mouseSensitivity = mouseSensitivity;
             _jumpSpeed = jumpSpeed;
             _gravity = gravity;
+            
+            _playerState.IsGrounded = true;
+            _playerState.Pitch = 0f;
+            _playerState.Yaw = 0f;
+            _playerState.Velocity = Vector3.zero;
 
             // Inicializar yaw al valor actual del actor para acumular correctamente
             if (_actor?.CharacterTransform != null) _yaw = _actor.CharacterTransform.eulerAngles.y;

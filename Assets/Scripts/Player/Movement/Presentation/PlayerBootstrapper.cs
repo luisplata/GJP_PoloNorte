@@ -1,5 +1,6 @@
 using UnityEngine;
 using Adapters;
+using Environment;
 using GJP_PoloNorte.Domain.UseCases;
 
 namespace Presentation
@@ -27,8 +28,8 @@ namespace Presentation
         {
             if (autoAssignAdapters)
             {
-                if (inputAdapter == null) inputAdapter = UnityEngine.Object.FindFirstObjectByType<UnityInputAdapter>();
-                if (characterAdapter == null) characterAdapter = UnityEngine.Object.FindFirstObjectByType<UnityCharacterControllerAdapter>();
+                if (inputAdapter == null) inputAdapter = FindFirstObjectByType<UnityInputAdapter>();
+                if (characterAdapter == null) characterAdapter = FindFirstObjectByType<UnityCharacterControllerAdapter>();
             }
 
             if (inputAdapter != null && characterAdapter != null)

@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace GJP_PoloNorte.Domain
+namespace Player.Movement.Domain
 {
     // Estado simple del jugador mantenido por el dominio
     public class PlayerState
